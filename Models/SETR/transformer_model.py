@@ -75,30 +75,25 @@ class TransLayerNorm(nn.Module):
         x = (x - u) / torch.sqrt(s + self.variance_epsilon)
         return self.gamma * x + self.beta
 
+
 class Siam_linear(nn.Module):
-    def __init__(self, config,inshape,out_shape):
+    def __init__(self, config,inshape):
         super(Siam_linear, self).__init__()
         self.dense_1 = nn.Linear(inshape, config.hidden_size)
         self.dense_2 = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense_3 = nn.Linear(config.hidden_size, config.hidden_size)
         self.dense_cat = nn.Linear(config.hidden_size*2, config.hidden_size)
-        self.out_shape=out_shape
-        if self.out_shape!=0:
-            self.dense_last = nn.Linear(config.hidden_size, out_shape)
         self.transform_act_fn = ACT2FN[config.hidden_act]
         self.LayerNorm = TransLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, input):
         #brunch 0:
-        hidden_states_0_1 = self.LayerNorm(self.transform_act_fn(self.dense_1(input*1)))
-        hidden_states_0_2 = self.LayerNorm(self.transform_act_fn(self.dense_2(hidden_states_0_1)))
+        hidden_states_0_1 = self.dense_3(self.transform_act_fn(self.dense_2(self.transform_act_fn(self.dense_1(input*1)))))
         #brunch 1:
-        hidden_states_1_1 = self.LayerNorm(self.transform_act_fn(self.dense_1(input*(-1))))
-        hidden_states_1_2 = self.LayerNorm(self.transform_act_fn(self.dense_2(hidden_states_1_1)))
+        hidden_states_1_1 = self.dense_3(self.transform_act_fn(self.dense_2(self.transform_act_fn(self.dense_1(input*(-1))))))
 
-        aggregate_state=torch.cat((hidden_states_0_2,hidden_states_1_2),dim=2)
+        aggregate_state=torch.cat((hidden_states_0_1,hidden_states_1_1),dim=2)
         hidden_state_out= self.LayerNorm(self.transform_act_fn(self.dense_cat(aggregate_state)))
-        if self.out_shape!=0:
-            hidden_state_out = self.transform_act_fn(self.dense_last(hidden_state_out))
         return hidden_state_out
       
 class TransEmbeddings(nn.Module):
@@ -314,7 +309,7 @@ class TransEncoder(nn.Module):
 class InputDense2d(nn.Module):
     def __init__(self, config):
         super(InputDense2d, self).__init__()
-        self.dense = nn.Linear(config.patch_size[0] * config.patch_size[1] * config.in_channels+2, config.hidden_size)
+        self.dense = nn.Linear(config.patch_size[0] * config.patch_size[1] * config.in_channels+3, config.hidden_size)
         self.transform_act_fn = ACT2FN[config.hidden_act]
         self.LayerNorm = TransLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
@@ -383,8 +378,8 @@ class ReciverModel2d(nn.Module):
     def __init__(self, config,tcn):
         super(ReciverModel2d, self).__init__()
         self.config = config
-        self.dense = Decoder_Dense2d(config,tcn)
-        #self.dense = Siam_linear(config,tcn,0)
+        #self.dense = Decoder_Dense2d(config,tcn)
+        self.dense = Siam_linear(config,tcn)
 
         self.embeddings = TransEmbeddings(config)
         self.encoder = TransEncoder(config)
