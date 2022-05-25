@@ -55,7 +55,7 @@ class Channel(nn.Module):
 
 
 class Encoder2D(nn.Module):
-    def __init__(self, config: TransConfig, tcn,is_segmentation=True):
+    def __init__(self, config: TransConfig, tcn):
         super().__init__()
         self.config = config
         self.out_channels = config.out_channels
@@ -69,9 +69,7 @@ class Encoder2D(nn.Module):
         self.patch_size = config.patch_size
         self.hh = self.patch_size[0] // sample_v
         self.ww = self.patch_size[1] // sample_v
-
-        self.is_segmentation = is_segmentation
-        self.tcn=tcn
+        
     def forward(self, x,CSI_vector):
         ## x:(b, c, w, h)
         b, c, h, w = x.shape
@@ -102,7 +100,7 @@ class Decoder2D_trans(nn.Module):
         super().__init__()
         self.config = config
         self.out_channels = config.out_channels
-        self.bert_model = ReciverModel2d(config,tcn+2)
+        self.bert_model = ReciverModel2d(config,tcn+3)
         #sample_rate=4,sample_v=16
         #self.final_dense = nn.Linear(config.hidden_size, 192)
         self.final_dense = nn.Linear(config.hidden_size, 48)
@@ -118,133 +116,8 @@ class Decoder2D_trans(nn.Module):
         x_out = rearrange(x, "b (h w) (p1 p2 c) -> b c (h p1) (w p2)", p1 = 4, p2 = 4, h = 8, w = 8, c =3)
 
         return x_out 
-class Decoder2D(nn.Module):
-    def __init__(self, in_channels, out_channels, features=[512, 256, 128, 64]):
-        super().__init__()
-        self.decoder_1 = nn.Sequential(
-                    nn.Conv2d(in_channels, features[0], 3, padding=1),
-                    nn.BatchNorm2d(features[0]),
-                    nn.ReLU(inplace=True),
-                    nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-                )
-        self.decoder_2 = nn.Sequential(
-                    nn.Conv2d(features[0], features[1], 3, padding=1),
-                    nn.BatchNorm2d(features[1]),
-                    nn.ReLU(inplace=True),
-                    #nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-                )
-        self.decoder_3 = nn.Sequential(
-            nn.Conv2d(features[1], features[2], 3, padding=1),
-            nn.BatchNorm2d(features[2]),
-            nn.ReLU(inplace=True),
-            #nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        )
-        self.decoder_4 = nn.Sequential(
-            nn.Conv2d(features[2], features[3], 3, padding=1),
-            nn.BatchNorm2d(features[3]),
-            nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        )
 
-        self.final_out = nn.Conv2d(features[-1], out_channels, 3, padding=1)
 
-    def forward(self, x):
-        x = self.decoder_1(x)
-        x = self.decoder_2(x)
-        x = self.decoder_3(x)
-        x = self.decoder_4(x)
-        x = self.final_out(x)
-        return x
-
-class FL_De_Module(nn.Module):
-    expansion = 1
-    def __init__(self, in_channels, out_channels, kernel_size,stride,padding,out_padding,activation=None):
-        super(FL_De_Module, self).__init__()
-        self.Deconv1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride,padding=padding,output_padding=out_padding)
-        self.GDN = nn.BatchNorm2d(out_channels)
-        if activation=='sigmoid':
-            self.activate_func=nn.Sigmoid()
-        elif activation=='prelu':
-            self.activate_func=nn.PReLU()
-        elif activation==None:
-            self.activate_func=None            
-
-    def forward(self, inputs):
-        out_deconv1=self.Deconv1(inputs)
-        out_bn=self.GDN(out_deconv1)
-        if self.activate_func != None:
-            out=self.activate_func(out_bn)
-        else:
-            out=out_bn
-        return out
-
-class Decoder_Res(nn.Module):
-    def __init__(self,in_channel):
-        super(Decoder_Res, self).__init__()
-        self.FL_De_Module_1 = FL_De_Module(in_channel, 256, 5, stride=1,padding=2,out_padding=0,activation='prelu')
-        self.FL_De_Module_2 = FL_De_Module(256, 256, 5, stride=1,padding=2,out_padding=0,activation='prelu')
-        self.FL_De_Module_3 = FL_De_Module(256, 256, 5, stride=1,padding=2,out_padding=0,activation='prelu')
-        self.FL_De_Module_4 = FL_De_Module(256, 256, 5, stride=2,padding=2,out_padding=1,activation='prelu')
-        self.FL_De_Module_5 = FL_De_Module(256,3, 9, stride=2,padding=4,out_padding=1,activation='sigmoid')
-
-    def forward(self, x):
-        decoded_1_out = self.FL_De_Module_1(x)
-        decoded_2_out = self.FL_De_Module_2(decoded_1_out)
-        decoded_3_out = self.FL_De_Module_3(decoded_2_out)
-        decoded_4_out = self.FL_De_Module_4(decoded_3_out)
-        decoded_5_out = self.FL_De_Module_5(decoded_4_out)
-        return decoded_5_out
-
-class PreTrainModel(nn.Module):
-    def __init__(self, patch_size, 
-                        in_channels, 
-                        out_class, 
-                        hidden_size=1024, 
-                        num_hidden_layers=8, 
-                        num_attention_heads=16,
-                        decode_features=[512, 256, 128, 64]):
-        super().__init__()
-        config = TransConfig(patch_size=patch_size, 
-                            in_channels=in_channels, 
-                            out_channels=0, 
-                            hidden_size=hidden_size, 
-                            num_hidden_layers=num_hidden_layers, 
-                            num_attention_heads=num_attention_heads)
-        self.encoder_2d = Encoder2D(config, is_segmentation=False)
-        self.cls = nn.Linear(hidden_size, out_class)
-
-    def forward(self, x):
-        encode_img = self.encoder_2d(x)
-        encode_pool = encode_img.mean(dim=1)
-        out = self.cls(encode_pool)
-        return out 
-
-class Vit(nn.Module):
-    def __init__(self, patch_size, 
-                        in_channels, 
-                        out_class, 
-                        hidden_size=1024, 
-                        num_hidden_layers=8, 
-                        num_attention_heads=16,
-                        sample_rate=4,
-                        ):
-        super().__init__()
-        config = TransConfig(patch_size=patch_size, 
-                            in_channels=in_channels, 
-                            out_channels=0, 
-                            sample_rate=sample_rate,
-                            hidden_size=hidden_size, 
-                            num_hidden_layers=num_hidden_layers, 
-                            num_attention_heads=num_attention_heads)
-        self.encoder_2d = Encoder2D(config, is_segmentation=False)
-        self.cls = nn.Linear(hidden_size, out_class)
-
-    def forward(self, x):
-        encode_img = self.encoder_2d(x)
-        
-        encode_pool = encode_img.mean(dim=1)
-        out = self.cls(encode_pool)
-        return out 
 
 class SETRModel(nn.Module):
     def __init__(self, patch_size=(32, 32), 
@@ -309,8 +182,8 @@ class SETRModel(nn.Module):
 
             #CSI attention
             h_attention=S
-            #CSI_attention_vector=torch.cat((h_attention,channel_snr_attention),dim=1).unsqueeze(dim=1).repeat(1,64,1)
-            CSI_attention_vector=h_attention.unsqueeze(dim=1).repeat(1,64,1)
+            CSI_attention_vector=torch.cat((h_attention,channel_snr_attention),dim=1).unsqueeze(dim=1).repeat(1,64,1)
+            #CSI_attention_vector=h_attention.unsqueeze(dim=1).repeat(1,64,1)
 
             #encoder
             x_encoded = self.encoder_2d(x,CSI_attention_vector)
