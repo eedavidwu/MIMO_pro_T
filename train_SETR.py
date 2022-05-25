@@ -39,13 +39,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     #Train:
     parser.add_argument("--best_ckpt_path", default='./ckpts/', type=str,help='best model path')
-    parser.add_argument("--all_epoch", default='1000', type=int,help='Train_epoch')
+    parser.add_argument("--all_epoch", default='1200', type=int,help='Train_epoch')
     parser.add_argument("--best_choice", default='loss', type=str,help='select epoch [loss/PSNR]')
     parser.add_argument("--flag", default='train', type=str,help='train or eval for JSCC')
 
     # Model and Channel:
     parser.add_argument("--model", default='SETR', type=str,help='Model select: SETR/ADSETR/')
-    parser.add_argument("--tcn", default=8, type=int,help='tansmit_channel_num for djscc')
+    parser.add_argument("--tcn", default=16, type=int,help='tansmit_channel_num for djscc')
     #parser.add_argument("--channel_type", default='awgn', type=str,help='awgn/slow fading/burst')
     parser.add_argument("--N_r", default=2, type=int,help='number of receiver')
     parser.add_argument("--N_s", default=2, type=int,help='number of sender')
@@ -69,17 +69,17 @@ if __name__ == "__main__":
                         in_channels=3, 
                         out_channels=3, 
                         hidden_size=256, 
-                        num_hidden_layers=4, 
+                        num_hidden_layers=8, 
                         num_attention_heads=4, 
-                        tcn=8)
-        channel_snr=args.snr
-        #channel_snr='random'
+                        tcn=args.tcn)
+        #channel_snr=args.snr
+        channel_snr='random'
 
-    #GPU_ids = [0,1,2,3]
+    GPU_ids = [0,1,2,3]
     print("############## Train model",args.model,",with SNR: ",channel_snr," ##############")
     print("this model size path 64, tcn 8")
     print(model)
-    #model = nn.DataParallel(model,device_ids = GPU_ids)
+    model = nn.DataParallel(model,device_ids = GPU_ids)
     model = model.cuda()
     #print(model)
     #model.to(device)
@@ -95,7 +95,7 @@ if __name__ == "__main__":
                                               shuffle=True, num_workers=2)
     testset = torchvision.datasets.CIFAR10(root='./data/cifar', train=False,
                                            download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=128,
+    testloader = torch.utils.data.DataLoader(testset, batch_size=64,
                                              shuffle=False, num_workers=2)
 
 
@@ -121,7 +121,7 @@ if __name__ == "__main__":
             report_loss += loss.item()
         print('Epoch:[',epoch,']',", loss : " ,str(report_loss/step))
 
-        if ((epoch % 4 == 0) and (epoch>200)):
+        if ((epoch % 4 == 0) and (epoch>200)) or epoch==0:
             if args.model=='SETR':
                 if channel_snr=='random':
                     PSNR_list=[]
@@ -142,7 +142,7 @@ if __name__ == "__main__":
                             "Best_PSNR":best_psnr
                         }
                         print(PSNR_list)
-                        SNR_path='./checkpoints_8/SNR_T_'+str(channel_snr)  
+                        SNR_path='./checkpoints_16/'
                         check_dir(SNR_path)      
                         save_path=os.path.join(SNR_path,'SNR_'+str(channel_snr)+'.pth')
                         torch.save(checkpoint, save_path)
