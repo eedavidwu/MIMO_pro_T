@@ -307,9 +307,9 @@ class TransEncoder(nn.Module):
         return all_encoder_layers
 
 class InputDense2d(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,MIMO_num):
         super(InputDense2d, self).__init__()
-        self.dense = nn.Linear(config.patch_size[0] * config.patch_size[1] * config.in_channels+3, config.hidden_size)
+        self.dense = nn.Linear(config.patch_size[0] * config.patch_size[1] * config.in_channels+MIMO_num+1, config.hidden_size)
         self.transform_act_fn = ACT2FN[config.hidden_act]
         self.LayerNorm = TransLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
@@ -346,10 +346,10 @@ class InputDense3d(nn.Module):
         return hidden_states
 
 class TransModel2d(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,MIMO_num):
         super(TransModel2d, self).__init__()
         self.config = config
-        self.dense = InputDense2d(config)
+        self.dense = InputDense2d(config,MIMO_num)
         self.embeddings = TransEmbeddings(config)
         self.encoder = TransEncoder(config)
 
