@@ -12,8 +12,9 @@ from torch.autograd import Variable
 import math 
 
 class Channel(nn.Module):
-    def __init__(self):
+    def __init__(self,MIMO_num):
         super(Channel, self).__init__()
+        self.N_t=MIMO_num
         
     def power_normalize(self,feature):        
         sig_pwr=torch.square(torch.abs(feature))
@@ -30,7 +31,7 @@ class Channel(nn.Module):
         complex_list=torch.split(z,(z.shape[1]//2),dim=1)
         z_in=torch.complex(complex_list[0],complex_list[1])
         #shape for MIMO:        
-        Y=z_in.view(batch_size,2,-1)
+        Y=z_in.view(batch_size,self.N_t,-1)
         shape_each_antena=Y.shape[-1]
         #normalized_X=Y
         normalized_X=self.power_normalize(Y)
@@ -55,11 +56,11 @@ class Channel(nn.Module):
 
 
 class Encoder2D(nn.Module):
-    def __init__(self, config: TransConfig, tcn):
+    def __init__(self, config: TransConfig, tcn,MIMO_num):
         super().__init__()
         self.config = config
         self.out_channels = config.out_channels
-        self.bert_model = TransModel2d(config)
+        self.bert_model = TransModel2d(config,MIMO_num)
         sample_rate = config.sample_rate
         sample_v = int(math.pow(2, sample_rate))
         #sample_rate=4,sample_v=16
@@ -96,11 +97,11 @@ class Encoder2D(nn.Module):
         return x 
 
 class Decoder2D_trans(nn.Module):
-    def __init__(self, config: TransConfig, tcn):
+    def __init__(self, config: TransConfig, tcn,MIMO_num):
         super().__init__()
         self.config = config
         self.out_channels = config.out_channels
-        self.bert_model = ReciverModel2d(config,tcn+3)
+        self.bert_model = ReciverModel2d(config,tcn+MIMO_num+1)
         #sample_rate=4,sample_v=16
         #self.final_dense = nn.Linear(config.hidden_size, 192)
         self.final_dense = nn.Linear(config.hidden_size, 48)
@@ -128,7 +129,7 @@ class SETRModel(nn.Module):
                         num_attention_heads=16,
                         max_position_embeddings=64,
                         decode_features=[512, 256, 128, 64],
-                        sample_rate=2,tcn=8):
+                        sample_rate=2,tcn=8,MIMO_num=2):
         super().__init__()
         config = TransConfig(patch_size=patch_size, 
                             in_channels=in_channels, 
@@ -139,25 +140,19 @@ class SETRModel(nn.Module):
                             num_hidden_layers=num_hidden_layers, 
                             num_attention_heads=num_attention_heads)
         
-        self.encoder_2d = Encoder2D(config,tcn)
+        self.encoder_2d = Encoder2D(config,tcn,MIMO_num)
         #self.decoder_2d = Decoder2D(in_channels=tcn, out_channels=config.out_channels, features=decode_features)
         #self.res_decoder=Decoder_Res(in_channel=tcn)
-        self.decoder_tran=Decoder2D_trans(config,tcn)
-        self.channel=Channel()
+        self.decoder_tran=Decoder2D_trans(config,tcn,MIMO_num)
+        self.channel=Channel(MIMO_num)
         self.SNR_max=20
         self.SNR_min=0
-    def transmit_feature(self,feature,channel_snr):
-        feature_ave=torch.zeros_like(feature).float().cuda()
-        for i in range (5):
-            channel_out=self.channel(feature,channel_snr)
-            feature_ave=feature_ave+channel_out
-        feature_out=feature_ave/5
-        return feature_out
+        self.MIMO_num=MIMO_num
 
     def forward(self, x,channel_snr):
         batch_size=x.shape[0]
-        N_s=2
-        N_r=2
+        N_s=self.MIMO_num
+        N_r=self.MIMO_num
         #reshape
         x_head_ave=torch.zeros_like(x).cuda()
         if channel_snr=='random':
