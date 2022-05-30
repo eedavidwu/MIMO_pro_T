@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     # Model and Channel:
     parser.add_argument("--model", default='SETR', type=str,help='Model select: SETR/ADSETR/')
-    parser.add_argument("--tcn", default=16, type=int,help='tansmit_channel_num for djscc')
+    parser.add_argument("--tcn", default=8, type=int,help='tansmit_channel_num for djscc')
     #parser.add_argument("--channel_type", default='awgn', type=str,help='awgn/slow fading/burst')
     parser.add_argument("--N_r", default=2, type=int,help='number of receiver')
     parser.add_argument("--N_s", default=2, type=int,help='number of sender')
@@ -57,21 +57,24 @@ if __name__ == "__main__":
     #parser.add_argument("--input_const_snr", default=1, type=float,help='SNR (db)')
     parser.add_argument("--input_snr_max", default=20, type=float,help='SNR (db)')
     parser.add_argument("--input_snr_min", default=0, type=int,help='SNR (db)')
+    parser.add_argument("--N_t", default=5, type=int,help='SNR (db)')
+
     #parser.add_argument("--resume", default=False,type=bool, help='Load past model')
     args=parser.parse_args()
 
     if args.model=='SETR':
         #64*6 1/8 ->(4,4) tcn=6
         #16*24 1/8->(8,8) tcn=24
-        print("64*6 1/8 ->(4,4) tcn=8")
+        #print("64*6 1/8 ->(4,4) tcn=8")
         #print("16*24 1/8->(8,8) tcn=24")
+        print('rate:',args.tcn)
         model = SETRModel(patch_size=(4, 4), 
                         in_channels=3, 
                         out_channels=3, 
                         hidden_size=256, 
-                        num_hidden_layers=8, 
+                        num_hidden_layers=4, 
                         num_attention_heads=4, 
-                        tcn=args.tcn)
+                        tcn=args.tcn,MIMO_num=args.N_t)
         #channel_snr=args.snr
         channel_snr='random'
 
@@ -91,11 +94,11 @@ if __name__ == "__main__":
         [transforms.ToTensor(), ])
     trainset = torchvision.datasets.CIFAR10(root='./data/cifar', train=True,
                                             download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128,
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=16,
                                               shuffle=True, num_workers=2)
     testset = torchvision.datasets.CIFAR10(root='./data/cifar', train=False,
                                            download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=64,
+    testloader = torch.utils.data.DataLoader(testset, batch_size=16,
                                              shuffle=False, num_workers=2)
 
 
@@ -142,9 +145,9 @@ if __name__ == "__main__":
                             "Best_PSNR":best_psnr
                         }
                         print(PSNR_list)
-                        SNR_path='./checkpoints_16/'
+                        SNR_path='./checkpoints_'+str(args.tcn)+'/'
                         check_dir(SNR_path)      
-                        save_path=os.path.join(SNR_path,'SNR_'+str(channel_snr)+'.pth')
+                        save_path=os.path.join(SNR_path,'4_layer_MIMO_'+str(args.N_t)+'_SNR_'+str(channel_snr)+'.pth')
                         torch.save(checkpoint, save_path)
                         print('Saving Model at epoch',epoch,'at',save_path)       
                 else:
