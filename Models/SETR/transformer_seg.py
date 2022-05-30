@@ -15,13 +15,23 @@ class Channel(nn.Module):
     def __init__(self,MIMO_num):
         super(Channel, self).__init__()
         self.N_t=MIMO_num
-        
+    '''    
     def power_normalize(self,feature):        
         sig_pwr=torch.square(torch.abs(feature))
         ave_sig_pwr=sig_pwr.mean(dim=2).unsqueeze(dim=2)
         z_in_norm=feature/(torch.sqrt(ave_sig_pwr))
         return z_in_norm
-
+    '''
+    
+    def power_normalize(self,feature):
+        in_shape=feature.shape
+        batch_size=in_shape[0]
+        z_in=feature.reshape(batch_size,-1)
+        sig_pwr=torch.square(torch.abs(z_in))
+        ave_sig_pwr=sig_pwr.mean(dim=1).unsqueeze(dim=1)
+        z_in_norm=z_in/(torch.sqrt(ave_sig_pwr))
+        inputs_in_norm=z_in_norm.reshape(in_shape)
+        return inputs_in_norm
 
     def forward(self, inputs,Uh,S_diag,snr):
         in_shape=inputs.shape
@@ -40,7 +50,7 @@ class Channel(nn.Module):
         #noise_stddev=(np.sqrt(10**(-snr/10))/np.sqrt(2)).reshape(-1,1,1)
         noise_stddev=torch.sqrt(10**(-snr/10)/2).unsqueeze(dim=1)
         #noise_stddev_board=torch.from_numpy(noise_stddev).repeat(1,2,shape_each_antena).float().cuda()
-        noise_stddev_board=noise_stddev.repeat(1,2,shape_each_antena).float().cuda()
+        noise_stddev_board=noise_stddev.repeat(1,self.N_t,shape_each_antena).float().cuda()
         mean=torch.zeros_like(noise_stddev_board).float().cuda()
         w_real=Variable(torch.normal(mean=mean,std=noise_stddev_board)).float()
         w_img=Variable(torch.normal(mean=mean,std=noise_stddev_board)).float()
