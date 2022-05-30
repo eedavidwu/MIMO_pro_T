@@ -62,21 +62,22 @@ if __name__ == "__main__":
     #parser.add_argument("--resume", default=False,type=bool, help='Load past model')
     args=parser.parse_args()
 
-    if args.model=='SETR':
-        #64*6 1/8 ->(4,4) tcn=6
-        #16*24 1/8->(8,8) tcn=24
-        #print("64*6 1/8 ->(4,4) tcn=8")
-        #print("16*24 1/8->(8,8) tcn=24")
-        print('rate:',args.tcn)
-        model = SETRModel(patch_size=(4, 4), 
-                        in_channels=3, 
-                        out_channels=3, 
-                        hidden_size=256, 
-                        num_hidden_layers=4, 
-                        num_attention_heads=4, 
-                        tcn=args.tcn,MIMO_num=args.N_t)
-        #channel_snr=args.snr
-        channel_snr='random'
+    #64*6 1/8 ->(4,4) tcn=6
+    #16*24 1/8->(8,8) tcn=24
+    #print("64*6 1/8 ->(4,4) tcn=8")
+    #print("16*24 1/8->(8,8) tcn=24")
+    print('rate:',args.tcn)
+    print('MIMO number',args.N_t)
+    
+    model = SETRModel(patch_size=(4, 4), 
+                    in_channels=3, 
+                    out_channels=3, 
+                    hidden_size=256, 
+                    num_hidden_layers=4, 
+                    num_attention_heads=4, 
+                    tcn=args.tcn,MIMO_num=args.N_t)
+    #channel_snr=args.snr
+    channel_snr='random'
 
     GPU_ids = [0,1,2,3]
     print("############## Train model",args.model,",with SNR: ",channel_snr," ##############")
